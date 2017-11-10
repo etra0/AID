@@ -3,7 +3,7 @@
 
 # # TMDb y redes neuronales
 
-# In[1]:
+# In[22]:
 
 
 import pandas as pd
@@ -11,23 +11,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random as r
 import json
+r.seed(1234)
 
 
 # Lo primero que haremos, será importar la data ([Source](https://www.kaggle.com/tmdb/tmdb-movie-metadata/data)) usando pandas
 
-# In[2]:
+# In[23]:
 
 
 df = pd.read_csv("tmdb_5000_movies.csv")
 
 
-# In[3]:
+# In[24]:
 
 
 df.head()
 
 
-# In[4]:
+# In[25]:
 
 
 df.info()
@@ -35,7 +36,7 @@ df.info()
 
 # En este caso, lo que necesitamos es sólamente el **género** y la **overview** para entrenar la red neuronal, por lo tanto se extraerá ésto.
 
-# In[5]:
+# In[26]:
 
 
 print(df['genres'][0])
@@ -44,7 +45,7 @@ print(df['overview'][0])
 
 # Se puede observar, como ser humano hay una relación inherente entre las etiquetas y la descripción de la película. En nuestro clasificador de texto solo se puede asignar una etiqueta al texto. Suponemos que todas las etiquetas son representativas, así que se escogerá la etiqueta *categorizadora* de forma aleatoria.
 
-# In[6]:
+# In[27]:
 
 
 def generate_data():
@@ -64,13 +65,13 @@ def generate_data():
     return final_list
 
 
-# In[7]:
+# In[28]:
 
 
 training_data = generate_data()
 
 
-# In[8]:
+# In[29]:
 
 
 r.choice(training_data)
@@ -78,7 +79,7 @@ r.choice(training_data)
 
 # Una vez preparado la `training_data`, se procederá a construir la red neuronal.
 
-# In[ ]:
+# In[30]:
 
 
 # use natural language toolkit
@@ -90,7 +91,7 @@ import datetime
 stemmer = LancasterStemmer()
 
 
-# In[ ]:
+# In[31]:
 
 
 words = []
@@ -118,24 +119,107 @@ classes = list(set(classes))
 
 print (len(documents), "documents")
 print (len(classes), "classes", classes)
-print (len(words), "unique stemmed words", words)
 
 
-# In[ ]:
+# In[32]:
 
 
-import numpy as np
-import time
+# create our training data
+training = []
+output = []
+# create an empty array for our output
+output_empty = [0] * len(classes)
 
-# compute sigmoid nonlinearity
-def sigmoid(x):
-    output = 1/(1+np.exp(-x))
-    return output
+# training set, bag of words for each sentence
+for doc in documents:
+    # initialize our bag of words
+    bag = []
+    # list of tokenized words for the pattern
+    pattern_words = doc[0]
+    # stem each word
+    pattern_words = [stemmer.stem(word.lower()) for word in pattern_words]
+    # create our bag of words array
+    for w in words:
+        bag.append(1) if w in pattern_words else bag.append(0)
 
-# convert output of sigmoid function to its derivative
-def sigmoid_output_to_derivative(output):
-    return output*(1-output)
- 
+    training.append(bag)
+    # output is a '0' for each tag and '1' for current tag
+    output_row = list(output_empty)
+    output_row[classes.index(doc[1])] = 1
+    output.append(output_row)
+
+# sample training/output
+i = 0
+w = documents[i][0]
+print ([stemmer.stem(word.lower()) for word in w])
+print (training[i])
+print (output[i])
+
+
+# In[12]:
+
+
+X = np.array(training)
+y = np.array(output)
+
+
+# In[13]:
+
+
+train_X = X[:int(len(X)*0.8)]
+train_Y = y[:int(len(y)*0.8)]
+
+test_X = X[int(len(X)*0.8):]
+test_Y = y[int(len(y)*0.8):]
+
+
+# In[14]:
+
+
+print(train_X.shape)
+print(test_X.shape)
+
+
+# In[15]:
+
+
+print(classes)
+
+
+# In[34]:
+
+
+from keras.models import Sequential
+from keras.layers import Dense, Activation, Dropout
+
+model = Sequential()
+model.add(Dense(1024, input_dim=train_X.shape[1], kernel_initializer='uniform', activation="relu"))
+model.add(Dropout(0.5))
+model.add(Dense(1024, kernel_initializer='uniform', activation="relu"))
+model.add(Dropout(0.1))
+#model.add(Dense(512, kernel_initializer='uniform', activation="relu"))
+model.add(Dense(train_Y.shape[1]))
+model.add(Activation("softmax"))
+
+model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+
+# In[35]:
+
+
+model.fit(train_X, train_Y, epochs=5, batch_size=256, verbose=1, shuffle=True)
+
+
+# In[36]:
+
+
+score=model.evaluate(test_X, test_Y, verbose=1)
+print("\nLoss: %.3f \t Accuracy: %.3f" % (score[0], score[1]))
+
+
+# In[37]:
+
+
 def clean_up_sentence(sentence):
     # tokenize the pattern
     sentence_words = nltk.word_tokenize(sentence)
@@ -143,7 +227,6 @@ def clean_up_sentence(sentence):
     sentence_words = [stemmer.stem(word.lower()) for word in sentence_words]
     return sentence_words
 
-# return bag of words array: 0 or 1 for each word in the bag that exists in the sentence
 def bow(sentence, words, show_details=False):
     # tokenize the pattern
     sentence_words = clean_up_sentence(sentence)
@@ -155,114 +238,30 @@ def bow(sentence, words, show_details=False):
                 bag[i] = 1
                 if show_details:
                     print ("found in bag: %s" % w)
-
+                    
     return(np.array(bag))
 
-def think(sentence, show_details=False):
-    x = bow(sentence.lower(), words, show_details)
-    if show_details:
-        print ("sentence:", sentence, "\n bow:", x)
-    # input layer is our bag of words
-    l0 = x
-    # matrix multiplication of input and hidden layer
-    l1 = sigmoid(np.dot(l0, synapse_0))
-    # output layer
-    l2 = sigmoid(np.dot(l1, synapse_1))
-    return l2
+
+# In[38]:
 
 
-# In[ ]:
+def predict(t, threshold=0.08):
+    bag = bow(t, words)
+    bag = np.array(bag).reshape(1, 15007)
+    l = sorted(zip(classes, model.predict(bag)[0]), key=lambda x: x[1], reverse=True)
+    return [i for i in l if i[1] > threshold]
 
 
-def train(X, y, hidden_neurons=10, alpha=1, epochs=50000, dropout=False, dropout_percent=0.5):
-
-    print ("Training with %s neurons, alpha:%s, dropout:%s %s" % (hidden_neurons, str(alpha), dropout, dropout_percent if dropout else '') )
-    print ("Input matrix: %sx%s    Output matrix: %sx%s" % (len(X),len(X[0]),1, len(classes)) )
-    np.random.seed(1)
-
-    last_mean_error = 1
-    # randomly initialize our weights with mean 0
-    synapse_0 = 2*np.random.random((len(X[0]), hidden_neurons)) - 1
-    synapse_1 = 2*np.random.random((hidden_neurons, len(classes))) - 1
-
-    prev_synapse_0_weight_update = np.zeros_like(synapse_0)
-    prev_synapse_1_weight_update = np.zeros_like(synapse_1)
-
-    synapse_0_direction_count = np.zeros_like(synapse_0)
-    synapse_1_direction_count = np.zeros_like(synapse_1)
-        
-    for j in iter(range(epochs+1)):
-
-        # Feed forward through layers 0, 1, and 2
-        layer_0 = X
-        layer_1 = sigmoid(np.dot(layer_0, synapse_0))
-                
-        if(dropout):
-            layer_1 *= np.random.binomial([np.ones((len(X),hidden_neurons))],1-dropout_percent)[0] * (1.0/(1-dropout_percent))
-
-        layer_2 = sigmoid(np.dot(layer_1, synapse_1))
-
-        # how much did we miss the target value?
-        layer_2_error = y - layer_2
-
-        if (j% 10000) == 0 and j > 5000:
-            # if this 10k iteration's error is greater than the last iteration, break out
-            if np.mean(np.abs(layer_2_error)) < last_mean_error:
-                print ("delta after "+str(j)+" iterations:" + str(np.mean(np.abs(layer_2_error))) )
-                last_mean_error = np.mean(np.abs(layer_2_error))
-            else:
-                print ("break:", np.mean(np.abs(layer_2_error)), ">", last_mean_error )
-                break
-                
-        # in what direction is the target value?
-        # were we really sure? if so, don't change too much.
-        layer_2_delta = layer_2_error * sigmoid_output_to_derivative(layer_2)
-
-        # how much did each l1 value contribute to the l2 error (according to the weights)?
-        layer_1_error = layer_2_delta.dot(synapse_1.T)
-
-        # in what direction is the target l1?
-        # were we really sure? if so, don't change too much.
-        layer_1_delta = layer_1_error * sigmoid_output_to_derivative(layer_1)
-        
-        synapse_1_weight_update = (layer_1.T.dot(layer_2_delta))
-        synapse_0_weight_update = (layer_0.T.dot(layer_1_delta))
-        
-        if(j > 0):
-            synapse_0_direction_count += np.abs(((synapse_0_weight_update > 0)+0) - ((prev_synapse_0_weight_update > 0) + 0))
-            synapse_1_direction_count += np.abs(((synapse_1_weight_update > 0)+0) - ((prev_synapse_1_weight_update > 0) + 0))        
-        
-        synapse_1 += alpha * synapse_1_weight_update
-        synapse_0 += alpha * synapse_0_weight_update
-        
-        prev_synapse_0_weight_update = synapse_0_weight_update
-        prev_synapse_1_weight_update = synapse_1_weight_update
-
-    now = datetime.datetime.now()
-
-    # persist synapses
-    synapse = {'synapse0': synapse_0.tolist(), 'synapse1': synapse_1.tolist(),
-               'datetime': now.strftime("%Y-%m-%d %H:%M"),
-               'words': words,
-               'classes': classes
-              }
-    synapse_file = "synapses.json"
-
-    with open(synapse_file, 'w') as outfile:
-        json.dump(synapse, outfile, indent=4, sort_keys=True)
-    print ("saved synapses to:", synapse_file)
+# In[39]:
 
 
-# In[ ]:
+test = ["A family goes out for vacations with their kids to enjoy the life", 
+        "A bat have to save the world against superman",
+       "An Alien arrived to my home and tried to kill me",
+       "A haunted house is in front of my window",
+       "A police man is killing someone"]
 
-
-X = np.array(training)
-y = np.array(output)
-
-start_time = time.time()
-
-train(X, y, hidden_neurons=20, alpha=0.1, epochs=100000, dropout=False, dropout_percent=0.2)
-
-elapsed_time = time.time() - start_time
-print ("processing time:", elapsed_time, "seconds")
+for t in test:
+    print(t, predict(t))
+    print()
 
